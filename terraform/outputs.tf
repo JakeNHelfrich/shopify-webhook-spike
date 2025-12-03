@@ -1,6 +1,6 @@
-output "api_gateway_url" {
-  description = "API Gateway endpoint URL for Shopify webhooks"
-  value       = "${aws_apigatewayv2_api.shopify_webhook_api.api_endpoint}/webhook"
+output "eventbridge_rule_arn" {
+  description = "EventBridge rule ARN for Shopify webhooks"
+  value       = aws_cloudwatch_event_rule.shopify_webhook.arn
 }
 
 output "dynamodb_table_name" {

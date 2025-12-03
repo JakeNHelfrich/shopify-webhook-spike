@@ -154,45 +154,5 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.shopify_webhook.arn
 }
 
-# API Gateway for receiving webhooks
-resource "aws_apigatewayv2_api" "shopify_webhook_api" {
-  name          = "shopify-webhook-api-${var.environment}"
-  protocol_type = "HTTP"
-
-  tags = {
-    Environment = var.environment
-  }
-}
-
-# API Gateway Stage
-resource "aws_apigatewayv2_stage" "default" {
-  api_id      = aws_apigatewayv2_api.shopify_webhook_api.id
-  name        = "$default"
-  auto_deploy = true
-}
-
-# API Gateway Integration with Lambda
-resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id           = aws_apigatewayv2_api.shopify_webhook_api.id
-  integration_type = "AWS_PROXY"
-  payload_format_version = "2.0"
-  target           = aws_lambda_function.shopify_webhook_handler.arn
-}
-
-# API Gateway Route
-resource "aws_apigatewayv2_route" "webhook_route" {
-  api_id    = aws_apigatewayv2_api.shopify_webhook_api.id
-  route_key = "POST /webhook"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-}
-
-# Lambda Permission for API Gateway
-resource "aws_lambda_permission" "allow_api_gateway" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.shopify_webhook_handler.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${aws_apigatewayv2_api.shopify_webhook_api.id}/*/*"
-}
 
 data "aws_caller_identity" "current" {}
