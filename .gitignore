@@ -1,0 +1,26 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+*.zip
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate*
+terraform/*.tfvars
+terraform/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
