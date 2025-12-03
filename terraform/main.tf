@@ -13,10 +13,10 @@ provider "aws" {
 
 # DynamoDB Table for storing Shopify inventory levels
 resource "aws_dynamodb_table" "shopify_inventory" {
-  name           = "shopify-inventory-${var.environment}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "shop_variant_id"
-  range_key      = "location"
+  name         = "shopify-inventory-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "shop_variant_id"
+  range_key    = "location"
 
   attribute {
     name = "shop_variant_id"
@@ -106,11 +106,11 @@ resource "aws_iam_role_policy" "lambda_logs_policy" {
 
 # Lambda Function
 resource "aws_lambda_function" "shopify_webhook_handler" {
-  filename      = "lambda_function.zip"
+  filename      = "../lambda_function.zip"
   function_name = "shopify-webhook-handler-${var.environment}"
   role          = aws_iam_role.lambda_role.arn
   handler       = "dist/handler.handler"
-  runtime       = "nodejs.20.x"
+  runtime       = "nodejs20.x"
   timeout       = 30
 
   environment {
@@ -120,7 +120,21 @@ resource "aws_lambda_function" "shopify_webhook_handler" {
     }
   }
 
-  source_code_hash = filebase64sha256("lambda_function.zip")
+  source_code_hash = filebase64sha256("../lambda_function.zip")
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+data "aws_cloudwatch_event_source" "shopify" {
+  name_prefix = "aws.partner/shopify.com/285340631041"
+}
+
+# Custom EventBridge Bus for Shopify events
+resource "aws_cloudwatch_event_bus" "shopify" {
+  name              = data.aws_cloudwatch_event_source.shopify.name
+  event_source_name = data.aws_cloudwatch_event_source.shopify.name
 
   tags = {
     Environment = var.environment
@@ -129,20 +143,25 @@ resource "aws_lambda_function" "shopify_webhook_handler" {
 
 # EventBridge Rule for Shopify Webhooks
 resource "aws_cloudwatch_event_rule" "shopify_webhook" {
-  name            = "shopify-webhook-rule-${var.environment}"
-  description     = "Route Shopify webhook events to Lambda"
-  event_bus_name  = "default"
+  name           = "shopify-webhook-rule-${var.environment}"
+  description    = "Route Shopify webhook events to Lambda"
+  event_bus_name = aws_cloudwatch_event_bus.shopify.name
+  event_pattern = jsonencode({
+    source = ["aws.partner/shopify.com/285340631041/shopify-events-dev"]
+  })
 
   tags = {
     Environment = var.environment
   }
 }
 
+
 # EventBridge Target
 resource "aws_cloudwatch_event_target" "lambda_target" {
-  rule      = aws_cloudwatch_event_rule.shopify_webhook.name
-  target_id = "ShopifyWebhookLambda"
-  arn       = aws_lambda_function.shopify_webhook_handler.arn
+  rule           = aws_cloudwatch_event_rule.shopify_webhook.name
+  event_bus_name = aws_cloudwatch_event_bus.shopify.name
+  target_id      = "ShopifyWebhookLambda"
+  arn            = aws_lambda_function.shopify_webhook_handler.arn
 }
 
 # Lambda Permission for EventBridge

@@ -1,9 +1,53 @@
 import { WebhookInventoryLevelDTO } from "../../domain/usecases/ProcessInventoryWebhookUseCase";
+import {
+  isShopifyEventBridgeEvent,
+  isShopifyEventBridgeDetail,
+  isInventoryLevelPayloadArray,
+  isShopifyWebhookMetadata,
+  type ShopifyEventBridgeEvent,
+  type ShopifyWebhookMetadata,
+} from "../types/EventBridgeTypes";
+
+export interface ParsedWebhookResult {
+  inventoryLevel: WebhookInventoryLevelDTO;
+  headers: ShopifyWebhookMetadata;
+  body: string;
+}
 
 /**
  * Parses and validates webhook payload structure
  */
 export class WebhookPayloadParser {
+  /**
+   * Parse EventBridge event and extract inventory levels and metadata
+   */
+  static parseEventBridgeEvent(event: unknown): ParsedWebhookResult {
+    if (!isShopifyEventBridgeEvent(event)) {
+      throw new Error("Invalid EventBridge event structure");
+    }
+
+    const eventBridgeEvent = event as ShopifyEventBridgeEvent;
+    const detail = eventBridgeEvent.detail;
+
+    if (!isShopifyEventBridgeDetail(detail)) {
+      throw new Error("Invalid EventBridge detail structure");
+    }
+
+    if (!isShopifyWebhookMetadata(detail.metadata)) {
+      throw new Error("Invalid metadata in EventBridge event");
+    }
+
+    const inventoryLevel = detail.payload as WebhookInventoryLevelDTO;
+    const headers = detail.metadata as ShopifyWebhookMetadata;
+    const body = JSON.stringify({ inventory_levels: [inventoryLevel] });
+
+    return {
+      inventoryLevel,
+      headers,
+      body,
+    };
+  }
+
   /**
    * Parse and extract inventory levels from webhook payload
    */
@@ -32,7 +76,7 @@ export class WebhookPayloadParser {
   /**
    * Extract shop name from headers
    */
-  static extractShopName(headers: Record<string, string>): string {
+  static extractShopName(headers: Record<string, string | undefined>): string {
     const shopDomain =
       headers["x-shopify-shop-domain"] ||
       headers["X-Shopify-Shop-Domain"] ||
@@ -48,7 +92,7 @@ export class WebhookPayloadParser {
   /**
    * Extract webhook topic from headers
    */
-  static extractTopic(headers: Record<string, string>): string {
+  static extractTopic(headers: Record<string, string | undefined>): string {
     return (
       headers["x-shopify-topic"] ||
       headers["X-Shopify-Topic"] ||
@@ -59,7 +103,7 @@ export class WebhookPayloadParser {
   /**
    * Extract webhook signature from headers
    */
-  static extractSignature(headers: Record<string, string>): string | undefined {
+  static extractSignature(headers: Record<string, string | undefined>): string | undefined {
     return (
       headers["x-shopify-hmac-sha256"] ||
       headers["X-Shopify-Hmac-SHA256"]

@@ -6,14 +6,13 @@ import { InventoryLevel } from "../../entities/InventoryLevel";
 // Mock implementations
 class MockInventoryRepository implements InventoryRepository {
   saveAsync: jest.Mock = jest.fn().mockResolvedValue(undefined);
-  saveManyAsync: jest.Mock = jest.fn().mockResolvedValue(undefined);
 
   async save(inventory: InventoryLevel): Promise<void> {
     return this.saveAsync(inventory);
   }
 
   async saveMany(inventories: InventoryLevel[]): Promise<void> {
-    return this.saveManyAsync(inventories);
+    throw new Error("Not implemented");
   }
 
   async getByShopAndVariant(): Promise<InventoryLevel[]> {
@@ -59,14 +58,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
           ],
         }),
         signature: "valid-signature",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
@@ -74,40 +71,26 @@ describe("ProcessInventoryWebhookUseCase", () => {
       expect(result.success).toBe(true);
       expect(result.processedCount).toBe(1);
       expect(result.errors).toHaveLength(0);
-      expect(mockRepository.saveManyAsync).toHaveBeenCalledTimes(1);
+      expect(mockRepository.saveAsync).toHaveBeenCalledTimes(1);
     });
 
-    it("should process webhook with multiple inventory levels", async () => {
+    it("should process webhook with inventory level successfully", async () => {
       const request = {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-          {
-            inventory_item_id: 12346,
-            location_id: 790,
-            available: 100,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-          {
-            inventory_item_id: 12347,
-            location_id: 791,
-            available: 0,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
 
       expect(result.success).toBe(true);
-      expect(result.processedCount).toBe(3);
+      expect(result.processedCount).toBe(1);
       expect(result.errors).toHaveLength(0);
     });
 
@@ -116,27 +99,23 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop.myshopify.com",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await useCase.execute(request);
 
-      expect(mockRepository.saveManyAsync).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            shopName: "myshop.myshopify.com",
-            variantId: 12345,
-            locationId: 789,
-            available: 50,
-          }),
-        ])
+      expect(mockRepository.saveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shopName: "myshop.myshopify.com",
+          variantId: 12345,
+          locationId: 789,
+          available: 50,
+        })
       );
     });
   });
@@ -149,7 +128,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "invalid-signature",
-        inventoryLevels: [],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -162,7 +146,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -175,7 +164,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "   ",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -183,29 +177,29 @@ describe("ProcessInventoryWebhookUseCase", () => {
       );
     });
 
-    it("should throw when inventory levels is not an array", async () => {
+    it("should throw when inventory level is not provided", async () => {
       const request = {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: null as unknown as Array<WebhookInventoryLevelDTO>,
+        inventoryLevel: null as unknown as WebhookInventoryLevelDTO,
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
-        "Inventory levels must be an array"
+        "Inventory level is required"
       );
     });
 
-    it("should throw when inventory levels array is empty", async () => {
+    it("should throw when inventory level is not an object", async () => {
       const request = {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [],
+        inventoryLevel: "not an object" as unknown as WebhookInventoryLevelDTO,
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
-        "Inventory levels array cannot be empty"
+        "Inventory level is required"
       );
     });
 
@@ -214,14 +208,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "invalid-date",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "invalid-date",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -234,14 +226,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: -1,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: -1,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -254,14 +244,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 0,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 0,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       await expect(useCase.execute(request)).rejects.toThrow(
@@ -271,81 +259,52 @@ describe("ProcessInventoryWebhookUseCase", () => {
   });
 
   describe("partial failures", () => {
-    it("should report errors when some saves fail", async () => {
-      mockRepository.saveManyAsync.mockRejectedValueOnce(
+    it("should report errors when save fails", async () => {
+      mockRepository.saveAsync.mockRejectedValueOnce(
         new Error("DynamoDB error")
       );
-      mockRepository.saveAsync
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error("Individual save failed"))
-        .mockResolvedValueOnce(undefined);
 
       const request = {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-          {
-            inventory_item_id: 12346,
-            location_id: 790,
-            available: 100,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-          {
-            inventory_item_id: 12347,
-            location_id: 791,
-            available: 25,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
 
       expect(result.success).toBe(false);
-      expect(result.processedCount).toBe(2);
+      expect(result.processedCount).toBe(0);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].index).toBe(1);
-      expect(result.errors[0].reason).toContain("Individual save failed");
+      expect(result.errors[0].index).toBe(0);
+      expect(result.errors[0].reason).toContain("DynamoDB error");
     });
 
-    it("should continue saving after batch failure", async () => {
-      mockRepository.saveManyAsync.mockRejectedValueOnce(
-        new Error("Batch failed")
-      );
+    it("should return success when save succeeds", async () => {
       mockRepository.saveAsync.mockResolvedValue(undefined);
 
       const request = {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-          {
-            inventory_item_id: 12346,
-            location_id: 790,
-            available: 100,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
 
       expect(result.success).toBe(true);
-      expect(result.processedCount).toBe(2);
-      expect(mockRepository.saveAsync).toHaveBeenCalledTimes(2);
+      expect(result.processedCount).toBe(1);
+      expect(mockRepository.saveAsync).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -355,14 +314,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: Number.MAX_SAFE_INTEGER,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: Number.MAX_SAFE_INTEGER,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
@@ -376,14 +333,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "myshop",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 0,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 0,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);
@@ -396,14 +351,12 @@ describe("ProcessInventoryWebhookUseCase", () => {
         shopName: "my-special-shop.myshopify.com",
         rawBody: "raw",
         signature: "sig",
-        inventoryLevels: [
-          {
-            inventory_item_id: 12345,
-            location_id: 789,
-            available: 50,
-            updated_at: "2024-01-15T10:30:00Z",
-          },
-        ],
+        inventoryLevel: {
+          inventory_item_id: 12345,
+          location_id: 789,
+          available: 50,
+          updated_at: "2024-01-15T10:30:00Z",
+        },
       };
 
       const result = await useCase.execute(request);

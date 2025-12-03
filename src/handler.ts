@@ -1,5 +1,4 @@
 import {
-  APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
   Context,
 } from "aws-lambda";
@@ -9,6 +8,7 @@ import { ProcessInventoryWebhookUseCase } from "./domain/usecases/ProcessInvento
 import { DynamoDBInventoryRepository } from "./adapters/repositories/DynamoDBInventoryRepository";
 import { ShopifyWebhookValidator } from "./adapters/validators/ShopifyWebhookValidator";
 import { WebhookPayloadParser } from "./adapters/parsers/WebhookPayloadParser";
+import type { ShopifyEventBridgeEvent } from "./adapters/types/EventBridgeTypes";
 
 const dynamoDbClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoDbClient);
@@ -28,43 +28,28 @@ const useCase = new ProcessInventoryWebhookUseCase(
 );
 
 /**
- * Main Lambda handler for processing Shopify webhooks
+ * Main Lambda handler for processing Shopify webhooks via EventBridge
  * Orchestrates request/response handling and error management
  */
 export async function handler(
-  event: APIGatewayProxyEventV2,
+  event: ShopifyEventBridgeEvent,
   context: Context
-): Promise<APIGatewayProxyResultV2> {
-  console.log("Received webhook event", {
+): Promise<APIGatewayProxyResultV2 | void> {
+  console.log("Received EventBridge webhook event", {
     requestId: context.awsRequestId,
-    path: event.rawPath,
-    method: event.requestContext.http.method,
   });
 
   try {
-    // Extract raw body
-    const body = event.body || "";
-    if (!body) {
-      console.warn("Empty request body");
-      return buildErrorResponse(400, "Empty request body");
-    }
+    const parsed = WebhookPayloadParser.parseEventBridgeEvent(event);
+    const { inventoryLevel, headers, body } = parsed;
 
-    // Parse webhook payload
-    const inventoryLevels = WebhookPayloadParser.parseInventoryLevels(body);
-    const shopName = WebhookPayloadParser.extractShopName(
-      event.headers as Record<string, string>
-    );
-    const signature = WebhookPayloadParser.extractSignature(
-      event.headers as Record<string, string>
-    );
-    const topic = WebhookPayloadParser.extractTopic(
-      event.headers as Record<string, string>
-    );
+    const shopName = WebhookPayloadParser.extractShopName(headers);
+    const signature = WebhookPayloadParser.extractSignature(headers);
+    const topic = WebhookPayloadParser.extractTopic(headers);
 
     console.log("Parsed webhook", {
       topic,
       shopName,
-      levelCount: inventoryLevels.length,
     });
 
     // Only process inventory_levels/update webhooks
@@ -80,7 +65,7 @@ export async function handler(
       shopName,
       rawBody: body,
       signature,
-      inventoryLevels,
+      inventoryLevel,
     });
 
     if (!result.success && result.errors.length > 0) {
